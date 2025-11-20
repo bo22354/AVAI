@@ -22,13 +22,20 @@ class DIV2KDataset(Dataset):
         #            DIV2K/DIV2K_train_LR_bicubic/X4/0001x4.png
         if mode == 'train':
             self.hr_dir = os.path.join(root_dir, 'DIV2K_train_HR')
+            print("HR Path: ", self.hr_dir)
             self.lr_dir = os.path.join(root_dir, f'DIV2K_train_LR_bicubic/X{scale_factor}')
-        else:
+        elif mode == 'valid':
             self.hr_dir = os.path.join(root_dir, 'DIV2K_valid_HR')
             self.lr_dir = os.path.join(root_dir, f'DIV2K_valid_LR_bicubic/X{scale_factor}')
             
         # Get list of HR images, sorted to ensure alignment
         self.hr_files = sorted(glob.glob(os.path.join(self.hr_dir, "*.png")))
+
+        if len(self.hr_files) == 0:
+            print(f"\n[ERROR] No images found!")
+            print(f"Looking in: {self.hr_dir}")
+            print(f"Make sure your folder structure matches this path exactly.\n")
+            raise RuntimeError("Dataset is empty.")
 
     def __len__(self):
         return len(self.hr_files)
