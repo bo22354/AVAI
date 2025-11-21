@@ -21,6 +21,8 @@ from multiprocessing import cpu_count
 
 from dataLoader import DIV2KDataset
 from Generator import Generator
+from Discriminator import Discriminator
+from Trainer import Trainer
 
 
 
@@ -42,13 +44,16 @@ parser.add_argument(
     help="The location of the dataset to be trained on")
 parser.add_argument(
     "--scale-factor",
-    default =  4,
+    default =  8,
+    type=int,
+    choices=[2, 3, 4, 8],
     help="The scale for which iamges are upscaled to"
 )
 parser.add_argument(
     "--batch-size",
-    default = 32,
-    help="Batch size for forward pass"
+    default = 16,
+    type = int,
+    help="Batch size for training"
 )
 parser.add_argument(
     "-j",
@@ -56,6 +61,12 @@ parser.add_argument(
     default=cpu_count(),
     type=int,
     help="Number of worker processes used to load data.",
+)
+parser.add_argument(
+    "--epochs",
+    default = 100,
+    type=int,
+    help="Number of epochs that are run for training"
 )
 
 
@@ -71,12 +82,14 @@ def main(args):
 
 
     patchSize = 24 * args.scale_factor
+    print(f"Scale: x{args.scale_factor} | HR Patch Size: {patchSize}")
 
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,
         mode="train",
-        patch_size=patchSize
+        patch_size=patchSize,
+        epoch_size=5000
     )
 
     train_loader = torch.utils.data.DataLoader(
@@ -91,25 +104,43 @@ def main(args):
         root_dir=validDatasetPath,
         scale_factor=args.scale_factor,
         mode="valid",
-        patch_size=patchSize
+        patch_size=patchSize,
+        epoch_size=5000
     )
 
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        shuffle=True,
-        batch_size=args.batch_size,
+        shuffle=False,
+        batch_size=1,
         pin_memory=True,
-        num_workers=args.worker_count,
+        num_workers=1,
     )
 
-    print("Number of Training Images: ", len(train_dataset))
-    print(f"batches per epoch: {len(train_loader)}")
-    print("Number of Validation Images: ", len(valid_dataset))
+    print(f"Training Images: {len(train_dataset)} ({len(train_loader)} batches)")
+    print(f"Validation Images: {len(valid_dataset)}")
 
-    
+    generator = Generator(scale_factor=args.scale_factor)
+    discriminator = Discriminator(input_shape=(3, patchSize, patchSize))
+
+    trainer = Trainer(
+        generator = generator,
+        discriminator = discriminator,
+        device = DEVICE,
+        train_loader = train_loader,
+        scale_factor=args.scale_factor
+    )
+
+    trainer.train(epochs = args.epochs)
+
+
 if __name__ == "__main__":
-    main(parser.parse_args())
-
+    args = parser.parse_args()
+    
+    # Check path exists before running
+    if not os.path.exists(args.dataset_root):
+        print(f"Error: Dataset not found at {args.dataset_root}")
+    else:
+        main(args)
 
 
 

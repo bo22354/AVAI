@@ -6,7 +6,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
 class DIV2KDataset(Dataset):
-    def __init__(self, root_dir, scale_factor=4, mode='train', patch_size=96):
+    def __init__(self, root_dir, scale_factor=4, mode='train', patch_size=96, epoch_size=None):
         """
         root_dir: Path to 'DIV2K' folder
         scale_factor: 4
@@ -16,6 +16,7 @@ class DIV2KDataset(Dataset):
         self.mode = mode
         self.scale_factor = scale_factor
         self.patch_size = patch_size
+        self.epoch_size = epoch_size
         
         # 1. Define paths based on DIV2K structure
         # Structure: DIV2K/DIV2K_train_HR/0001.png
@@ -38,11 +39,14 @@ class DIV2KDataset(Dataset):
             raise RuntimeError("Dataset is empty.")
 
     def __len__(self):
-        return len(self.hr_files)
+        return self.epoch_size if self.mode == 'train' else len(self.hr_files)
 
     def __getitem__(self, idx):
+        # if epoch_size > actual files then will need to wrap back around to the start
+        file_idx = idx % len(self.hr_files)
+
         # 1. Load HR Image
-        hr_path = self.hr_files[idx]
+        hr_path = self.hr_files[file_idx]
         hr_img = Image.open(hr_path).convert("RGB")
         
         # 2. Construct LR Filename matching DIV2K convention
