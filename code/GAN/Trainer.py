@@ -13,8 +13,10 @@ from torch.utils.data import DataLoader
 # from torchvision import datasets, transforms
 from torchvision.utils import save_image
 
-
 from PIL import Image
+
+from calculatePSNR import calculate_psnr
+from evaluate import evaluate
 
 
 
@@ -26,11 +28,14 @@ class Trainer:
         discriminator: nn.Module,
         device: torch.device,
         train_loader: DataLoader,
+        valid_loader: DataLoader,
+        valid_dataset_length: int, 
         scale_factor: int,
         lr: float = 1e-4,
     ):       
         self.device = device
         self.train_loader = train_loader
+        self.valid_loader = valid_loader
         self.netG = generator.to(device)
         self.netD = discriminator.to(device)
         self.optimG = optim.Adam(self.netG.parameters(), lr=lr, betas=(0.5, 0.999))
@@ -38,12 +43,14 @@ class Trainer:
         self.criterion_GAN = nn.BCEWithLogitsLoss().to(device) 
         self.criterion = nn.L1Loss().to(device)
         self.scale_factor = scale_factor
+        self.valid_dataset_length = valid_dataset_length
 
     def train(
         self,
         epochs: int
     ):
         print("Starting Training...")
+        best_psnr = 0.0
         
         for epoch in range(epochs):
             start_time = time.time()
@@ -119,8 +126,20 @@ class Trainer:
             # End of Epoch Logging
             avg_d_loss = running_results['d_loss'] / len(self.train_loader)
             avg_g_loss = running_results['g_loss'] / len(self.train_loader)
+
+            avg_psnr = self.validate()
             
             print(f"Epoch [{epoch+1}/{epochs}] Loss G: {avg_g_loss:.4f} Loss D: {avg_d_loss:.4f} Time: {time.time() - start_time:.2f}s")
+
+
+            if avg_psnr > best_psnr:
+                best_psnr = avg_psnr
+                strPSNR = f"{best_psnr:.2f}"
+
+                torch.save(self.netG.state_dict(), "Models/"+strPSNR+"_genModel.pth")
+                print("-> New Best Model Saved!")
+
+            torch.save(self.netG.state_dict(), "final_generator.pth")
 
             if epoch % 5 == 0:
                 # 1. Resize LR to match HR size for visualization (using Nearest Neighbor or Bilinear)
@@ -131,8 +150,45 @@ class Trainer:
                 comparison = torch.cat((lr_resized, fake_hr, hr), dim=3) 
                 
                 # 3. Undo Normalization [-1, 1] -> [0, 1] for saving
-                save_dir = "../results"
+                save_dir = "./results"
                 os.makedirs(save_dir, exist_ok=True)
                 
                 # 4. Save
                 save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
+
+
+                # Test on Validation Dataset
+                evaluate(self.netG, self.valid_loader, self.valid_dataset_length, self.device, self.scale_factor)
+
+
+    def validate(self):
+        self.netG.eval()
+        total_psnr = 0.0
+        
+        with torch.no_grad():
+            for lr, hr in self.valid_loader:
+                lr = lr.to(self.device)
+                hr = hr.to(self.device)
+                
+                # 1. Inference
+                sr = self.netG(lr)
+                
+                # 2. Dynamic Cropping (The Fix)
+                # Get the minimum dimensions between Generated (sr) and Ground Truth (hr)
+                batch, c, h_sr, w_sr = sr.shape
+                _, _, h_hr, w_hr = hr.shape
+                
+                h_min = min(h_sr, h_hr)
+                w_min = min(w_sr, w_hr)
+                
+                # Crop both tensors to the smallest common size
+                sr_cropped = sr[:, :, :h_min, :w_min]
+                hr_cropped = hr[:, :, :h_min, :w_min]
+                
+                # 3. Calculate Metric on the cropped versions
+                total_psnr += calculate_psnr(sr_cropped, hr_cropped).item()
+                
+        return total_psnr / len(self.valid_loader)
+
+
+    

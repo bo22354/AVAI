@@ -20,10 +20,9 @@ from pathlib import Path
 from multiprocessing import cpu_count
 
 from dataLoader import DIV2KDataset
-from Generator import Generator
-from Discriminator import Discriminator
 from Trainer import Trainer
-from alert import send_loud_notification
+from LIIF import LIIF
+# from alert import send_loud_notification
 
 
 
@@ -34,7 +33,7 @@ else:
 
 
 parser = argparse.ArgumentParser(
-    description="Train a Siamese Progression Net on HD_EPIC",
+    description="Train LIIF (Implicit Neural Representation) on DIV2K",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 default_dataset_dir = Path(__file__).parent.parent.parent.resolve()
@@ -52,7 +51,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--batch-size",
-    default = 32,
+    default = 16,
     type = int,
     help="Batch size for training"
 )
@@ -69,9 +68,18 @@ parser.add_argument(
     type=int,
     help="Number of epochs that are run for training"
 )
-
-
-
+parser.add_argument(
+    "--patch-size",
+    default=48,
+    type=int,
+    help="Size of the LR Image patch size taken per step"
+)
+parser.add_argument(
+    "--sample-q",
+    default=2304,
+    type=int,
+    help="Number of pixels sampled for each querry to each image"
+)
 
 
 def main(args):
@@ -82,15 +90,16 @@ def main(args):
     validDatasetPath = Path(datasetRoot+"/Valid")
 
 
-    patchSize = 24 * args.scale_factor
-    print(f"Scale: x{args.scale_factor} | HR Patch Size: {patchSize}")
+    print(f"--- Training LIIF | Scale: x{args.scale_factor} ---")
+    print(f"LR Patch Size: {args.patch_size} | Sample Q: {args.sample_q}")
 
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,
         mode="train",
-        patch_size=patchSize,
-        epoch_size=1000
+        patch_size=args.patch_size,
+        epoch_size=1000,
+        sample_q=args.sample_q
     )
 
     train_loader = torch.utils.data.DataLoader(
@@ -105,38 +114,42 @@ def main(args):
         root_dir=validDatasetPath,
         scale_factor=args.scale_factor,
         mode="valid",
-        patch_size=patchSize,
-        epoch_size=1000
+        patch_size=args.patch_size,
+        epoch_size=1000,
+        sample_q=args.sample_q
     )
 
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        shuffle=False,
+        shuffle=True,
         batch_size=1,
         pin_memory=True,
-        num_workers=1,
+        num_workers=1
     )
 
     print(f"Training Images: {len(train_dataset)} ({len(train_loader)} batches)")
     print(f"Validation Images: {len(valid_dataset)}")
 
-    generator = Generator(scale_factor=args.scale_factor)
-    discriminator = Discriminator(input_shape=(3, patchSize, patchSize))
+    model = LIIF(n_feats=64, mlp_dim=256).to(DEVICE)
 
+    # 3. Initialize Trainer
     trainer = Trainer(
-        generator = generator,
-        discriminator = discriminator,
-        device = DEVICE,
-        train_loader = train_loader,
-        valid_loader = valid_loader,
-        valid_dataset_length = len(valid_dataset),
+        model=model,
+        device=DEVICE,
+        train_loader=train_loader,
+        valid_loader=valid_loader,
         scale_factor=args.scale_factor
     )
 
-    trainer.train(epochs = args.epochs)
+    # 4. Start Training
+    trainer.train(epochs=args.epochs)
 
-    send_loud_notification("Training Complete! Check results !!!")
-    
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -147,8 +160,3 @@ if __name__ == "__main__":
         print(f"Error: Dataset not found at {args.dataset_root}")
     else:
         main(args)
-
-
-
-
-

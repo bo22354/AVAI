@@ -6,7 +6,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 
 class DIV2KDataset(Dataset):
-    def __init__(self, root_dir, scale_factor=4, mode='train', patch_size=96, epoch_size=None):
+    def __init__(self, root_dir, scale_factor=8, mode='train', patch_size=96, epoch_size=None):
         """
         root_dir: Path to 'DIV2K' folder
         scale_factor: 4
