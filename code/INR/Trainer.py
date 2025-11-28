@@ -29,6 +29,12 @@ class Trainer:
         
         # LIIF uses Adam, usually with a learning rate decay (simplified here)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5)
+        self.scheduler = optim.lr_scheduler.MultiStepLR(
+            self.optimizer, 
+            milestones=[200, 350, 450], 
+            gamma=0.5
+        )
         
         # L1 Loss is standard for LIIF (Pixel-wise accuracy)
         self.criterion = nn.L1Loss().to(device)
@@ -47,8 +53,9 @@ class Trainer:
     
             # 1. The Loop
             # Note: batch is now a DICTIONARY {'lr', 'coord', 'gt'}
+            i = 0
             for batch in self.train_loader:
-                
+                i += 1
                 # Move data to GPU
                 lr = batch['lr'].to(self.device)
                 coord = batch['coord'].to(self.device) # (x,y) coordinates
@@ -73,26 +80,29 @@ class Trainer:
 
             # End of Epoch Logging
             avg_loss = running_loss / len(self.train_loader)
-            
-            # 2. Validate
-            avg_psnr = self.validate()
-            
-            print(f"Epoch [{epoch+1}/{epochs}] | Loss: {avg_loss:.5f} | Val PSNR: {avg_psnr:.2f} dB | Time: {time.time() - start_time:.2f}s")
+                        
 
-            # 3. Save Model
-            if avg_psnr > best_psnr:
-                best_psnr = avg_psnr
-                strPSNR = f"{best_psnr:.2f}"
-                os.makedirs("Models_LIIF", exist_ok=True)
-                torch.save(self.model.state_dict(), f"Models_LIIF/{strPSNR}_best_liif.pth")
-                print("-> New Best Model Saved!")
 
             os.makedirs("Models_LIIF", exist_ok=True)
             torch.save(self.model.state_dict(), "Models_LIIF/last_liif.pth")
 
             # 4. Visualization
             if epoch % 5 == 0:
+                avg_psnr = self.validate()
+                print(f"Val PSNR: {avg_psnr:.2f} dB")
+                if avg_psnr > best_psnr:
+                    best_psnr = avg_psnr
+                    strPSNR = f"{best_psnr:.2f}"
+                    os.makedirs("Models_LIIF", exist_ok=True)
+                    torch.save(self.model.state_dict(), f"Models_LIIF/{strPSNR}_best_liif.pth")
+                    print("-> New Best Model Saved!")
                 self.visualize(epoch)
+
+            print(f"Epoch [{epoch+1}/{epochs}] | Loss: {avg_loss:.5f} | Time: {time.time() - start_time:.2f}s")
+
+            self.scheduler.step()
+
+            
 
     def _make_coord(self, shape, ranges=None):
         """ Helper to generate full image coordinates for Validation/Viz """
@@ -103,13 +113,10 @@ class Trainer:
             seq = v0 + r + (2 * r) * torch.arange(n).float()
             coord_seqs.append(seq)
         ret = torch.stack(torch.meshgrid(*coord_seqs, indexing='ij'), dim=-1)
+        ret = ret.flip(-1)
         return ret.view(-1, ret.shape[-1])
 
     def validate(self):
-        """
-        Validation loop is tricky for LIIF because we need to query 
-        EVERY pixel to reconstruct the image for PSNR calculation.
-        """
         self.model.eval()
         total_psnr = 0.0
         
@@ -118,53 +125,65 @@ class Trainer:
                 lr = lr.to(self.device)
                 hr = hr.to(self.device)
                 
-                # 1. Generate Coords for the FULL HR Image
-                # hr.shape is [1, 3, H, W]
+                # 1. Generate Coords for Full Image
                 h_hr, w_hr = hr.shape[-2:]
-                coord = self._make_coord((h_hr, w_hr)).to(self.device)
+                coord = self._make_coord((h_hr, w_hr)).to(self.device).unsqueeze(0)
                 
-                # Add batch dim: [1, H*W, 2]
-                coord = coord.unsqueeze(0) 
+                # 2. Batched Inference (THE FIX)
+                # Instead of self.model(lr, coord), we use the helper
+                pred_rgb = self.batched_predict(lr, coord, chunk_size=30000)
                 
-                # 2. Inference (Full Image)
-                # If you get CUDA OOM here, you need to query in chunks (batched inference)
-                # But for DIV2K validation crops, this usually fits.
-                pred_rgb = self.model(lr, coord)
-                
-                # 3. Reshape Prediction back to Image
-                # [1, H*W, 3] -> [1, H, W, 3] -> [1, 3, H, W]
+                # 3. Reshape and Calculate PSNR
                 sr = pred_rgb.view(1, h_hr, w_hr, 3).permute(0, 3, 1, 2)
                 
-                # 4. Calculate PSNR
-                # Note: LIIF naturally handles arbitrary sizes, so no cropping needed usually,
-                # but good to be safe.
                 total_psnr += calculate_psnr(sr, hr).item()
                 
         return total_psnr / len(self.valid_loader)
 
     def visualize(self, epoch):
-        """ Reconstructs one image for saving """
         self.model.eval()
         with torch.no_grad():
-            # Grab one batch
             lr, hr = next(iter(self.valid_loader))
             lr = lr.to(self.device)
             hr = hr.to(self.device)
             
-            # Generate Coords
             h_hr, w_hr = hr.shape[-2:]
             coord = self._make_coord((h_hr, w_hr)).to(self.device).unsqueeze(0)
             
-            # Predict
-            pred_rgb = self.model(lr, coord)
+            # Use the same helper!
+            pred_rgb = self.batched_predict(lr, coord, chunk_size=30000)
+            
             sr = pred_rgb.view(1, h_hr, w_hr, 3).permute(0, 3, 1, 2)
             
             # Resize LR for comparison
             lr_resized = nn.functional.interpolate(lr, size=hr.shape[2:], mode='nearest')
             
-            # Concatenate
             comparison = torch.cat((lr_resized, sr, hr), dim=3)
-            
             save_dir = "./results_liif"
             os.makedirs(save_dir, exist_ok=True)
             save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
+
+
+    def batched_predict(self, lr, coord, chunk_size=30000):
+        """
+        Splits the coordinate grid into chunks and predicts them sequentially 
+        to avoid OOM errors on large images.
+        """
+        self.model.eval()
+        prediction_list = []
+        n_pixels = coord.shape[1] # Total pixels to predict
+        
+        with torch.no_grad():
+            for i in range(0, n_pixels, chunk_size):
+                # 1. Grab a small slice of coordinates
+                coord_chunk = coord[:, i:i+chunk_size, :]
+                
+                # 2. Predict just this slice
+                # The Encoder features are cached/reused, so this is fast
+                pred_chunk = self.model(lr, coord_chunk)
+                
+                # 3. Store result (move to CPU if VRAM is extremely tight, else keep on GPU)
+                prediction_list.append(pred_chunk)
+        
+        # 4. Stitch all chunks back together
+        return torch.cat(prediction_list, dim=1)

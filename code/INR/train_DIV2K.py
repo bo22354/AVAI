@@ -51,7 +51,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--batch-size",
-    default = 16,
+    default = 32,
     type = int,
     help="Batch size for training"
 )
@@ -76,7 +76,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--sample-q",
-    default=2304,
+    default=16384,
     type=int,
     help="Number of pixels sampled for each querry to each image"
 )

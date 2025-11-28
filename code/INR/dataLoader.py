@@ -55,6 +55,7 @@ class DIV2KDataset(Dataset):
         
         # Stack into grid
         ret = torch.stack(torch.meshgrid(*coord_seqs, indexing='ij'), dim=-1)
+        ret = ret.flip(-1)
         if flatten:
             ret = ret.view(-1, ret.shape[-1])
         return ret
