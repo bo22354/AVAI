@@ -53,9 +53,7 @@ class Trainer:
         best_psnr = 0.0
         
         for epoch in range(epochs):
-            start_time = time.time()
-            print("Epoch: ", epoch)
-            
+            start_time = time.time()            
             # Metrics for this epoch
             running_results = {'d_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
     
@@ -127,21 +125,20 @@ class Trainer:
             avg_d_loss = running_results['d_loss'] / len(self.train_loader)
             avg_g_loss = running_results['g_loss'] / len(self.train_loader)
 
-            avg_psnr = self.validate()
             
-            print(f"Epoch [{epoch+1}/{epochs}] Loss G: {avg_g_loss:.4f} Loss D: {avg_d_loss:.4f} Time: {time.time() - start_time:.2f}s")
-
-
-            if avg_psnr > best_psnr:
-                best_psnr = avg_psnr
-                strPSNR = f"{best_psnr:.2f}"
-
-                torch.save(self.netG.state_dict(), "Models/"+strPSNR+"_genModel.pth")
-                print("-> New Best Model Saved!")
-
-            torch.save(self.netG.state_dict(), "final_generator.pth")
+            os.makedirs("Models_GAN",exist_ok=True)
+            torch.save(self.netG.state_dict(), "Models_GAN/last_GAN.pth")
 
             if epoch % 5 == 0:
+                avg_psnr = self.validate()
+                print(f"Val PSNR: {avg_psnr:.2f} dB")
+                if avg_psnr > best_psnr:
+                    best_psnr = avg_psnr
+                    strPSNR = f"{best_psnr:.2f}"
+                    os.makedirs("Models_GAN", exist_ok=True)
+                    torch.save(self.netG.state_dict(), f"Models_GAN/{strPSNR}_GAN.pth")
+                    print("-> New Best Model Saved!")
+
                 # 1. Resize LR to match HR size for visualization (using Nearest Neighbor or Bilinear)
                 lr_resized = nn.functional.interpolate(lr, scale_factor=self.scale_factor, mode='nearest')
                 
@@ -158,7 +155,9 @@ class Trainer:
 
 
                 # Test on Validation Dataset
-                evaluate(self.netG, self.valid_loader, self.valid_dataset_length, self.device, self.scale_factor)
+                # evaluate(self.netG, self.valid_loader, self.valid_dataset_length, self.device, self.scale_factor)
+            
+            print(f"Epoch [{epoch+1}/{epochs}] Loss G: {avg_g_loss:.4f} Loss D: {avg_d_loss:.4f} Time: {time.time() - start_time:.2f}s")
 
 
     def validate(self):
