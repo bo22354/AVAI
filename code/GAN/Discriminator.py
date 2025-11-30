@@ -16,53 +16,28 @@ class Discriminator(nn.Module):
             return layers
 
         self.model = nn.Sequential(
-            # Block 1: Input (3) -> 64 channels. No BN on first layer.
-            *discriminator_block(channels, 64, stride=1, normalize=False),
-            
-            # Block 2: Downsample to 48x48
-            *discriminator_block(64, 64, stride=2),
-            
-            # Block 3: 64 -> 128
-            *discriminator_block(64, 128, stride=1),
-            
-            # Block 4: Downsample to 24x24
-            *discriminator_block(128, 128, stride=2),
-            
-            # Block 5: 128 -> 256
-            *discriminator_block(128, 256, stride=1),
-            
-            # Block 6: Downsample to 12x12
-            *discriminator_block(256, 256, stride=2),
-            
-            # Block 7: 256 -> 512
-            *discriminator_block(256, 512, stride=1),
-            
-            # Block 8: Downsample to 6x6
-            *discriminator_block(512, 512, stride=2),
+            *discriminator_block(channels, 64, stride=1, normalize=False), # Block 1: 3 -> 64 channels. No BN
+            *discriminator_block(64, 64, stride=2), # Block 2: Downsample to 48x48
+            *discriminator_block(64, 128, stride=1), # Block 3: 64 -> 128 channels
+            *discriminator_block(128, 128, stride=2), # Block 4: Downsample to 24x24
+            *discriminator_block(128, 256, stride=1), # Block 5: 128 -> 256 channels
+            *discriminator_block(256, 256, stride=2), # Block 6: Downsample to 12x12
+            *discriminator_block(256, 512, stride=1), # Block 7: 256 -> 512 channels
+            *discriminator_block(512, 512, stride=2), # Block 8: Downsample to 6x6
         )
 
-        # The Classification Head
-        # We use AdaptiveAvgPool so this works even if you change patch size from 96 to 128
-        self.avg_pool = nn.AdaptiveAvgPool2d((6, 6))
-        
+        # Classification Head
+        self.avg_pool = nn.AdaptiveAvgPool2d((6, 6)) # Adaptive Pooling used incase I decide to try bigger patch size e.g. 32x32
         self.classifier = nn.Sequential(
             nn.Linear(512 * 6 * 6, 1024),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(1024, 1),
-            nn.Sigmoid() # Output probability [0, 1]
+            nn.Sigmoid() 
         )
 
     def forward(self, img):
-        # 1. Extract Features through Convolutions
-        features = self.model(img)
-        
-        # 2. Force features to 6x6 spatial size
-        features = self.avg_pool(features)
-        
-        # 3. Flatten (Batch_Size, 18432)
-        features_flat = torch.flatten(features, 1)
-        
-        # 4. Classify (Real vs Fake)
-        validity = self.classifier(features_flat)
-        
+        features = self.model(img) # Convolutions
+        features = self.avg_pool(features) # Pooling
+        features_flat = torch.flatten(features, 1) # Flattern
+        validity = self.classifier(features_flat) # Classifier        
         return validity

@@ -46,7 +46,7 @@ parser.add_argument(
     "--scale-factor",
     default =  8,
     type=int,
-    choices=[2, 3, 4, 8],
+    choices=[8, 16],
     help="The scale for which iamges are upscaled to"
 )
 parser.add_argument(
@@ -79,6 +79,12 @@ parser.add_argument(
     default=16384,
     type=int,
     help="Number of pixels sampled for each querry to each image"
+)
+parser.add_argument(
+    "--noise", 
+    default=0, 
+    type=float, 
+    help="Sigma value for Gaussian noise (e.g. 10, 30, 50)"
 )
 
 
@@ -116,7 +122,8 @@ def main(args):
         mode="valid",
         patch_size=args.patch_size,
         epoch_size=1000,
-        sample_q=args.sample_q
+        sample_q=args.sample_q,
+        noise=args.noise
     )
 
     valid_loader = torch.utils.data.DataLoader(

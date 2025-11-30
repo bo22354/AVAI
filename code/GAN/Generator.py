@@ -24,6 +24,10 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         upsample_block_num = int(math.log(scale_factor, 2))
 
+        n_resblocks = 16
+        if scale_factor == 16:
+            n_resblocks = 24
+
         # 1. First Convolution: Maps Image (3 channels) to Feature Space (64 channels)
         self.block1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=9, padding=4),
@@ -32,7 +36,7 @@ class Generator(nn.Module):
 
         # 2. Residual Blocks (The "Body"): 
         # 16 blocks is standard for SRGAN. You can reduce to 6-8 for faster training.
-        self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(16)])
+        self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(n_resblocks)])
 
         # 3. Post-Residual Block
         self.block2 = nn.Sequential(

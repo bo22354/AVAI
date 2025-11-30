@@ -7,7 +7,7 @@ from PIL import Image
 import torchvision.transforms.functional as TF
 
 class DIV2KDataset(Dataset):
-    def __init__(self, root_dir, scale_factor=8, mode='train', patch_size=48, epoch_size=1000, sample_q=2304):
+    def __init__(self, root_dir, scale_factor=8, mode='train', patch_size=48, epoch_size=1000, sample_q=2304, noise=0):
         """
         Args:
             root_dir: Path to 'data' folder
@@ -23,14 +23,20 @@ class DIV2KDataset(Dataset):
         self.patch_size = patch_size # Input LR size
         self.epoch_size = epoch_size
         self.sample_q = sample_q
+        self.noise = noise
         
+
+        self.read_scale = self.scale_factor
+        if self.scale_factor == 16:
+            self.read_scale = 8
+
         # 1. Path Setup (Same as before)
         if mode == 'train':
             self.hr_dir = os.path.join(root_dir, 'DIV2K_train_HR')
-            self.lr_dir = os.path.join(root_dir, f'DIV2K_train_LR_bicubic/X{scale_factor}')
+            self.lr_dir = os.path.join(root_dir, f'DIV2K_train_LR_bicubic/X{self.read_scale}')
         else:
             self.hr_dir = os.path.join(root_dir, 'DIV2K_valid_HR')
-            self.lr_dir = os.path.join(root_dir, f'DIV2K_valid_LR_bicubic/X{scale_factor}')
+            self.lr_dir = os.path.join(root_dir, f'DIV2K_valid_LR_bicubic/X{self.read_scale}')
             
         self.hr_files = sorted(glob.glob(os.path.join(self.hr_dir, "*.png")))
         
@@ -70,7 +76,7 @@ class DIV2KDataset(Dataset):
         
         file_name = os.path.basename(hr_path)
         img_id = file_name.split('.')[0]
-        lr_path = os.path.join(self.lr_dir, f"{img_id}x{self.scale_factor}.png")
+        lr_path = os.path.join(self.lr_dir, f"{img_id}x{self.read_scale}.png")
         lr_img = Image.open(lr_path).convert("RGB")
 
         # 3. Crop Logic (Train Only)
@@ -105,6 +111,27 @@ class DIV2KDataset(Dataset):
             # Convert to Tensor
             lr_tensor = TF.to_tensor(lr_patch) # [3, 48, 48]
             hr_tensor = TF.to_tensor(hr_patch) # [3, 192, 192]
+
+            # --- TASK 2.3: ON-THE-FLY x16 DOWNSAMPLING ---
+            if self.scale_factor == 16:
+                # We assume the loaded file is x8. We need to go down one more step (x2).
+                # interpolate expects 4D input [Batch, C, H, W], so we unsqueeze(0)
+                lr_tensor = torch.nn.functional.interpolate(
+                    lr_tensor.unsqueeze(0), 
+                    scale_factor=0.5, 
+                    mode='bicubic', 
+                    align_corners=False
+                ).squeeze(0)
+                
+                # Note: We enforce clamp because bicubic can overshoot 0.0/1.0
+                lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
+            # ---------------------------------------------
+
+            if self.noise > 0:
+                print("Here")
+                noise = torch.randn_like(lr_tensor) * (self.noise / 255.0)
+                lr_tensor = lr_tensor + noise
+                lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
             
             # Normalization (LIIF typically uses standard 0-1 or -1 to 1)
             # Let's use [-1, 1] to match your GAN logic
@@ -142,6 +169,27 @@ class DIV2KDataset(Dataset):
             # Validation Mode: Return full images
             lr_tensor = TF.to_tensor(lr_img)
             hr_tensor = TF.to_tensor(hr_img)
+
+            # --- TASK 2.3: ON-THE-FLY x16 DOWNSAMPLING ---
+            if self.scale_factor == 16:
+                # We assume the loaded file is x8. We need to go down one more step (x2).
+                # interpolate expects 4D input [Batch, C, H, W], so we unsqueeze(0)
+                lr_tensor = torch.nn.functional.interpolate(
+                    lr_tensor.unsqueeze(0), 
+                    scale_factor=0.5, 
+                    mode='bicubic', 
+                    align_corners=False
+                ).squeeze(0)
+                
+                # Note: We enforce clamp because bicubic can overshoot 0.0/1.0
+                lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
+            # ---------------------------------------------
+
+            if self.noise > 0:
+                noise = torch.randn_like(lr_tensor) * (self.noise / 255.0)
+                lr_tensor = lr_tensor + noise
+                lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
+
             # Normalize
             lr_tensor = TF.normalize(lr_tensor, [0.5]*3, [0.5]*3)
             hr_tensor = TF.normalize(hr_tensor, [0.5]*3, [0.5]*3)

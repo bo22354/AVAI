@@ -51,6 +51,13 @@ parser.add_argument(
     default = True,
     help="Save comparison images"
 )
+parser.add_argument(
+    "--noise", 
+    default=0, 
+    type=float, 
+    help="Sigma value for Gaussian noise (e.g. 10, 30, 50)"
+)
+
 def make_coord(shape):
     """ Helper to generate (x,y) coordinates for the full image grid """
     coord_seqs = []
@@ -96,7 +103,8 @@ def evaluate(args):
         mode="valid",
         patch_size=48, # Ignored in valid
         epoch_size=1,  # Ignored in valid
-        sample_q=None  # None = Full Image
+        sample_q=None,  # None = Full Image
+        noise=args.noise
     )
 
     valid_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)

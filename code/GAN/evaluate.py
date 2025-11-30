@@ -5,6 +5,9 @@ from dataLoader import DIV2KDataset
 from Generator import Generator
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from pathlib import Path
+from torchvision.utils import save_image
+import torch.nn.functional as F
+
 
 # Setup Device
 if torch.cuda.is_available():
@@ -36,6 +39,18 @@ parser.add_argument(
     type=str,
     help="path to the model that we want to test the validation data on"
 )
+parser.add_argument(
+    "--save-images",
+    action="store_true",
+    default = True,
+    help="Save comparison images"
+)
+parser.add_argument(
+    "--noise", 
+    default=0, 
+    type=float, 
+    help="Sigma value for Gaussian noise (e.g. 10, 30, 50)"
+)
 
 def main(args):
     print(f"--- Evaluating Model: {args.model} ---")
@@ -50,7 +65,8 @@ def main(args):
         root_dir=validDatasetPath, 
         scale_factor=args.scale_factor, 
         mode='valid',
-        patch_size=0 # Not used in valid mode
+        patch_size=0, # Not used in valid mode
+        noise=args.noise
     )
     valid_loader = torch.utils.data.DataLoader(
         val_dataset, 
@@ -74,7 +90,8 @@ def main(args):
 
 def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor): 
     print(f"--- Evaluating on Validation ---")
-
+    save_dir = Path("evaluation_results")
+    save_dir.mkdir(exist_ok=True)
 
 
     model.eval()
@@ -89,7 +106,7 @@ def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor):
 
     # 4. Inference Loop
     with torch.no_grad():
-        for lr, hr in valid_loader:
+        for i, (lr, hr) in enumerate(valid_loader):
             lr = lr.to(DEVICE)
             hr = hr.to(DEVICE)
 
@@ -124,7 +141,20 @@ def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor):
             total_psnr += psnr
             total_ssim += ssim
             count += 1
-            
+                        # --- VISUALIZATION LOGIC ---
+            if args.save_images and i < 10: # Only save the first 10 images
+                # Resize LR to match HR size for side-by-side comparison
+                # We use 'nearest' so you can clearly see the blocky pixels of the input
+                lr_resized = F.interpolate(lr, size=(h_min, w_min), mode='nearest')
+                lr_resized = torch.clamp(lr_resized * 0.5 + 0.5, 0, 1)
+                
+                # Stack: Left=Input, Middle=Generated, Right=Ground Truth
+                comparison = torch.cat((lr_resized, sr_norm, hr_norm), dim=3)
+                save_path = save_dir / f"val_{i}_psnr{psnr:.2f}.png"
+                save_image(comparison, save_path)
+                print(f"Saved visualization: {save_path}")
+
+            # ---------------------------
             if count % 10 == 0:
                 print(f"Processed {count}/{datasetLength} images...")
 

@@ -22,6 +22,7 @@ from multiprocessing import cpu_count
 from dataLoader import DIV2KDataset
 from Generator import Generator
 from Discriminator import Discriminator
+from DiscriminatorX16 import DiscriminatorX16
 from Trainer import Trainer
 from alert import send_loud_notification
 
@@ -47,7 +48,7 @@ parser.add_argument(
     "--scale-factor",
     default =  8,
     type=int,
-    choices=[2, 3, 4, 8],
+    choices=[8, 16],
     help="The scale for which iamges are upscaled to"
 )
 parser.add_argument(
@@ -69,6 +70,13 @@ parser.add_argument(
     type=int,
     help="Number of epochs that are run for training"
 )
+parser.add_argument(
+    "--noise", 
+    default=0, 
+    type=float, 
+    help="Sigma value for Gaussian noise (e.g. 10, 30, 50)"
+)
+
 
 
 
@@ -90,7 +98,8 @@ def main(args):
         scale_factor=args.scale_factor,
         mode="train",
         patch_size=patchSize,
-        epoch_size=1000
+        epoch_size=1000,
+        noise=args.noise
     )
 
     train_loader = torch.utils.data.DataLoader(
@@ -106,7 +115,8 @@ def main(args):
         scale_factor=args.scale_factor,
         mode="valid",
         patch_size=patchSize,
-        epoch_size=1000
+        epoch_size=1000,
+        noise=args.noise
     )
 
     valid_loader = torch.utils.data.DataLoader(
@@ -123,6 +133,10 @@ def main(args):
     generator = Generator(scale_factor=args.scale_factor)
     discriminator = Discriminator(input_shape=(3, patchSize, patchSize))
 
+    if args.scale_factor == 16:
+            discriminator = DiscriminatorX16(input_shape=(3, patchSize, patchSize))
+
+
     trainer = Trainer(
         generator = generator,
         discriminator = discriminator,
@@ -130,7 +144,8 @@ def main(args):
         train_loader = train_loader,
         valid_loader = valid_loader,
         valid_dataset_length = len(valid_dataset),
-        scale_factor=args.scale_factor
+        scale_factor=args.scale_factor,
+        noise=args.noise
     )
 
     trainer.train(epochs = args.epochs)

@@ -31,6 +31,7 @@ class Trainer:
         valid_loader: DataLoader,
         valid_dataset_length: int, 
         scale_factor: int,
+        noise: int,
         lr: float = 1e-4,
     ):       
         self.device = device
@@ -44,6 +45,7 @@ class Trainer:
         self.criterion = nn.L1Loss().to(device)
         self.scale_factor = scale_factor
         self.valid_dataset_length = valid_dataset_length
+        self.noise = noise
 
     def train(
         self,
@@ -125,9 +127,9 @@ class Trainer:
             avg_d_loss = running_results['d_loss'] / len(self.train_loader)
             avg_g_loss = running_results['g_loss'] / len(self.train_loader)
 
-            
-            os.makedirs("Models_GAN",exist_ok=True)
-            torch.save(self.netG.state_dict(), "Models_GAN/last_GAN.pth")
+            save_dir = "Models_GAN_Noise"+str(self.noise)
+            os.makedirs(save_dir,exist_ok=True)
+            torch.save(self.netG.state_dict(), save_dir+"last_GAN.pth")
 
             if epoch % 5 == 0:
                 avg_psnr = self.validate()
@@ -135,8 +137,8 @@ class Trainer:
                 if avg_psnr > best_psnr:
                     best_psnr = avg_psnr
                     strPSNR = f"{best_psnr:.2f}"
-                    os.makedirs("Models_GAN", exist_ok=True)
-                    torch.save(self.netG.state_dict(), f"Models_GAN/{strPSNR}_GAN.pth")
+                    # os.makedirs("Models_GAN", exist_ok=True)
+                    torch.save(self.netG.state_dict(), f"{save_dir}/{strPSNR}_GAN.pth")
                     print("-> New Best Model Saved!")
 
                 # 1. Resize LR to match HR size for visualization (using Nearest Neighbor or Bilinear)
@@ -147,7 +149,7 @@ class Trainer:
                 comparison = torch.cat((lr_resized, fake_hr, hr), dim=3) 
                 
                 # 3. Undo Normalization [-1, 1] -> [0, 1] for saving
-                save_dir = "./results"
+                save_dir = "./results/noise"+str(self.noise)
                 os.makedirs(save_dir, exist_ok=True)
                 
                 # 4. Save
