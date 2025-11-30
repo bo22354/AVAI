@@ -128,7 +128,6 @@ class DIV2KDataset(Dataset):
             # ---------------------------------------------
 
             if self.noise > 0:
-                print("Here")
                 noise = torch.randn_like(lr_tensor) * (self.noise / 255.0)
                 lr_tensor = lr_tensor + noise
                 lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)

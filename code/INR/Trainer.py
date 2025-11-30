@@ -20,12 +20,14 @@ class Trainer:
         train_loader: DataLoader,
         valid_loader: DataLoader,
         scale_factor: int,
+        noise: int,
         lr: float = 1e-4,
     ):       
         self.device = device
         self.train_loader = train_loader
         self.valid_loader = valid_loader
         self.model = model.to(device)
+        self.noise = noise
         
         # LIIF uses Adam, usually with a learning rate decay (simplified here)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
@@ -82,9 +84,9 @@ class Trainer:
             avg_loss = running_loss / len(self.train_loader)
                         
 
-
-            os.makedirs("Models_LIIF", exist_ok=True)
-            torch.save(self.model.state_dict(), "Models_LIIF/last_liif.pth")
+            save_dir = "Models_LIIF_Noise"+str(self.noise)
+            os.makedirs(save_dir,exist_ok=True)
+            torch.save(self.model.state_dict(), save_dir+"/last_LIIF.pth")
 
             # 4. Visualization
             if epoch % 5 == 0:
@@ -93,8 +95,8 @@ class Trainer:
                 if avg_psnr > best_psnr:
                     best_psnr = avg_psnr
                     strPSNR = f"{best_psnr:.2f}"
-                    os.makedirs("Models_LIIF", exist_ok=True)
-                    torch.save(self.model.state_dict(), f"Models_LIIF/{strPSNR}_best_liif.pth")
+                    # os.makedirs("Models_LIIF", exist_ok=True)
+                    torch.save(self.model.state_dict(), f"{save_dir}/{strPSNR}_LIIF.pth")
                     print("-> New Best Model Saved!")
                 self.visualize(epoch)
 
@@ -159,7 +161,7 @@ class Trainer:
             lr_resized = nn.functional.interpolate(lr, size=hr.shape[2:], mode='nearest')
             
             comparison = torch.cat((lr_resized, sr, hr), dim=3)
-            save_dir = "./results_liif"
+            save_dir = "./results/noise"+str(self.noise)
             os.makedirs(save_dir, exist_ok=True)
             save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
 

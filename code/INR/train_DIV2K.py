@@ -105,7 +105,8 @@ def main(args):
         mode="train",
         patch_size=args.patch_size,
         epoch_size=1000,
-        sample_q=args.sample_q
+        sample_q=args.sample_q,
+        noise=args.noise
     )
 
     train_loader = torch.utils.data.DataLoader(
@@ -145,15 +146,12 @@ def main(args):
         device=DEVICE,
         train_loader=train_loader,
         valid_loader=valid_loader,
-        scale_factor=args.scale_factor
+        scale_factor=args.scale_factor,
+        noise=args.noise
     )
 
     # 4. Start Training
     trainer.train(epochs=args.epochs)
-
-
-
-
 
 
 
