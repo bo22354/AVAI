@@ -134,7 +134,7 @@ def main(args):
     discriminator = Discriminator(input_shape=(3, patchSize, patchSize))
 
     if args.scale_factor == 16:
-            discriminator = DiscriminatorX16(input_shape=(3, patchSize, patchSize))
+        discriminator = DiscriminatorX16(input_shape=(3, patchSize, patchSize))
 
 
     trainer = Trainer(

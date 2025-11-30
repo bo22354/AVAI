@@ -84,12 +84,12 @@ class Trainer:
             avg_loss = running_loss / len(self.train_loader)
                         
 
-            save_dir = "Models_LIIF_Noise"+str(self.noise)
+            save_dir = "Models/noise"+str(self.noise)+"/scale"+str(self.scale_factor)+"/"
             os.makedirs(save_dir,exist_ok=True)
             torch.save(self.model.state_dict(), save_dir+"/last_LIIF.pth")
 
             # 4. Visualization
-            if epoch % 5 == 0:
+            if epoch % 5 == 0 and epoch > 75:
                 avg_psnr = self.validate()
                 print(f"Val PSNR: {avg_psnr:.2f} dB")
                 if avg_psnr > best_psnr:
@@ -161,9 +161,9 @@ class Trainer:
             lr_resized = nn.functional.interpolate(lr, size=hr.shape[2:], mode='nearest')
             
             comparison = torch.cat((lr_resized, sr, hr), dim=3)
-            save_dir = "./results/noise"+str(self.noise)
+            save_dir = "./results/noise"+str(self.noise)+"/scale"+str(self.scale_factor)
             os.makedirs(save_dir, exist_ok=True)
-            save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
+            save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}_full_image.png")
 
 
     def batched_predict(self, lr, coord, chunk_size=30000):

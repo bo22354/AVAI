@@ -127,11 +127,11 @@ class Trainer:
             avg_d_loss = running_results['d_loss'] / len(self.train_loader)
             avg_g_loss = running_results['g_loss'] / len(self.train_loader)
 
-            save_dir = "Models_GAN_Noise"+str(self.noise)
+            save_dir = "Models/noise"+str(self.noise)+"/scale"+str(self.scale_factor)+"/"
             os.makedirs(save_dir,exist_ok=True)
             torch.save(self.netG.state_dict(), save_dir+"last_GAN.pth")
 
-            if epoch % 5 == 0:
+            if epoch % 5 == 0 and epoch > 75:
                 avg_psnr = self.validate()
                 print(f"Val PSNR: {avg_psnr:.2f} dB")
                 if avg_psnr > best_psnr:
@@ -149,7 +149,7 @@ class Trainer:
                 comparison = torch.cat((lr_resized, fake_hr, hr), dim=3) 
                 
                 # 3. Undo Normalization [-1, 1] -> [0, 1] for saving
-                save_dir = "./results/noise"+str(self.noise)
+                save_dir = "./results/noise"+str(self.noise)+"/scale"+str(self.scale_factor)
                 os.makedirs(save_dir, exist_ok=True)
                 
                 # 4. Save

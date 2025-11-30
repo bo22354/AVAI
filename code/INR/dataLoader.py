@@ -83,13 +83,13 @@ class DIV2KDataset(Dataset):
         if self.mode == 'train':
             # We crop based on LR size (Encoder Input)
             lr_crop_size = self.patch_size
-            hr_crop_size = self.patch_size * self.scale_factor
+            hr_crop_size = self.patch_size * self.read_scale
             
             w, h = lr_img.size
             if w < lr_crop_size or h < lr_crop_size:
                  # Safety resize if image is too small
                  lr_img = lr_img.resize((max(w, lr_crop_size), max(h, lr_crop_size)), Image.BICUBIC)
-                 hr_img = hr_img.resize((max(w, lr_crop_size)*self.scale_factor, max(h, lr_crop_size)*self.scale_factor), Image.BICUBIC)
+                 hr_img = hr_img.resize((max(w, lr_crop_size)*self.read_scale, max(h, lr_crop_size)*self.read_scale), Image.BICUBIC)
                  w, h = lr_img.size
 
             i = random.randint(0, h - lr_crop_size)
@@ -98,7 +98,7 @@ class DIV2KDataset(Dataset):
             # Crop LR
             lr_patch = TF.crop(lr_img, i, j, lr_crop_size, lr_crop_size)
             # Crop HR (Multiplied coordinates)
-            hr_patch = TF.crop(hr_img, i*self.scale_factor, j*self.scale_factor, hr_crop_size, hr_crop_size)
+            hr_patch = TF.crop(hr_img, i*self.read_scale, j*self.read_scale, hr_crop_size, hr_crop_size)
             
             # Augmentation
             if random.random() < 0.5:
