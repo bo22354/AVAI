@@ -3,14 +3,10 @@ import torch
 import time
 
 import numpy as np
-
 import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
-# from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
-
-# from torchvision import datasets, transforms
 from torchvision.utils import save_image
 
 from PIL import Image
@@ -29,7 +25,6 @@ class Trainer:
         device: torch.device,
         train_loader: DataLoader,
         valid_loader: DataLoader,
-        valid_dataset_length: int, 
         scale_factor: int,
         noise: int,
         lr: float = 1e-4,
@@ -44,7 +39,6 @@ class Trainer:
         self.criterion_GAN = nn.BCEWithLogitsLoss().to(device) 
         self.criterion = nn.L1Loss().to(device)
         self.scale_factor = scale_factor
-        self.valid_dataset_length = valid_dataset_length
         self.noise = noise
 
     def train(
@@ -154,11 +148,7 @@ class Trainer:
                 
                 # 4. Save
                 save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
-
-
-                # Test on Validation Dataset
-                # evaluate(self.netG, self.valid_loader, self.valid_dataset_length, self.device, self.scale_factor)
-            
+     
             print(f"Epoch [{epoch+1}/{epochs}] Loss G: {avg_g_loss:.4f} Loss D: {avg_d_loss:.4f} Time: {time.time() - start_time:.2f}s")
 
 

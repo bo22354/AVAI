@@ -143,7 +143,6 @@ def main(args):
         device = DEVICE,
         train_loader = train_loader,
         valid_loader = valid_loader,
-        valid_dataset_length = len(valid_dataset),
         scale_factor=args.scale_factor,
         noise=args.noise
     )

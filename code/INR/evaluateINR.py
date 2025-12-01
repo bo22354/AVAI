@@ -36,7 +36,7 @@ parser.add_argument(
     "--scale-factor", 
     default=8, 
     type=int, 
-    choices=[2, 3, 4, 8], 
+    choices=[8, 16], 
     help="Upscaling scale"
     )
 parser.add_argument(
