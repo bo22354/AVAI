@@ -30,7 +30,7 @@ parser.add_argument(
     "--scale-factor",
     default = 8,
     type=int,
-    choices=[2, 3, 4, 8],
+    choices=[8, 16],
     help="The scale for which iamges are upscaled to"
 )
 parser.add_argument(
@@ -75,6 +75,7 @@ def main(args):
     )
 
     model = Generator(scale_factor=args.scale_factor).to(DEVICE)
+
 
     # Load weights
     try:

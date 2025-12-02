@@ -87,7 +87,7 @@ def main(args):
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
 
-    lr_patchSize = 48 # POTENTIALLY LOWER TO 48
+    lr_patchSize = 32 # POTENTIALLY LOWER TO 48
     patchSize = lr_patchSize * args.scale_factor 
     print(f"Scale: x{args.scale_factor} | HR Patch Size: {patchSize}")
 
