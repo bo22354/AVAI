@@ -97,7 +97,7 @@ def main(args):
     print(f"--- Training LIIF | Scale: x{args.scale_factor} ---")
     print(f"LR Patch Size: {args.patch_size} | Sample Q: {args.sample_q}")
 
-    #Initialise Datasets from dataloader
+    # Initialise Datasets from dataloader
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,

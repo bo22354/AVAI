@@ -51,7 +51,6 @@ class Trainer:
     
             i = 0
             # bathc is now a DICTIONARY {'lr', 'coord', 'gt'}
-
             for batch in self.train_loader:
                 i += 1
 
@@ -79,7 +78,6 @@ class Trainer:
             os.makedirs(save_dir,exist_ok=True)
             torch.save(self.model.state_dict(), save_dir+"/last_LIIF.pth")
 
-            # Visualization
             if epoch % 5 == 0 and epoch > 75:
                 avg_psnr = self.validate()
                 print(f"Val PSNR: {avg_psnr:.2f} dB")

@@ -33,7 +33,7 @@ else:
 
 
 parser = argparse.ArgumentParser(
-    description="Train a Siamese Progression Net on HD_EPIC",
+    description="Train SwinIR on DIV2K",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 default_dataset_dir = Path(__file__).parent.parent.parent.resolve()
@@ -79,19 +79,17 @@ parser.add_argument(
 
 
 def main(args):
-
-
+    #Dataset Path and Folders
     args.dataset_root.mkdir(parents=True, exist_ok=True)
     datasetRoot = str(args.dataset_root)
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
 
-    lr_patchSize = 32 # POTENTIALLY LOWER TO 48
+    lr_patchSize = 32 # Increase to 48 for x8 scaling
     patchSize = lr_patchSize * args.scale_factor 
     print(f"Scale: x{args.scale_factor} | HR Patch Size: {patchSize}")
 
-    # 1. Dataset (Same as GAN)
-    # Important: SwinIR likes larger patch sizes. Try 48 or 64.
+    # Initialise Datasets from dataloader
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,
@@ -116,7 +114,6 @@ def main(args):
         epoch_size=1000,
         noise=args.noise
     )
-
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         shuffle=False,
@@ -127,10 +124,8 @@ def main(args):
 
     print(f"Training Images: {len(train_dataset)} ({len(train_loader)} batches)")
     print(f"Validation Images: {len(valid_dataset)}")
-    
-    # 2. Model
-    # img_size: This tells the Swin Transformer the input size during training
-    # embed_dim: 60 is standard lightweight. Reduce to 48 if OOM.
+
+    # Model Configuration
     model = SwinIR(
         img_size=lr_patchSize,
         patch_size=1, 
@@ -145,7 +140,6 @@ def main(args):
         resi_connection='1conv'
     )
 
-    # 3. Trainer
     trainer = Trainer(
         model=model,
         device=DEVICE,
@@ -159,8 +153,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    
-    # Check path exists before running
     if not os.path.exists(args.dataset_root):
         print(f"Error: Dataset not found at {args.dataset_root}")
     else:

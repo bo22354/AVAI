@@ -142,23 +142,30 @@ class SwinTransformerBlock(nn.Module):
         return x
 
 class RSTB(nn.Module):
-    """Residual Swin Transformer Block"""
     def __init__(self, dim, depth, num_heads, window_size, mlp_ratio=4.):
         super().__init__()
         self.dim = dim
-        self.layers = nn.ModuleList([
-            SwinTransformerBlock(dim=dim, num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
-                                 mlp_ratio=mlp_ratio)
-            for i in range(depth)])
+        self.layers = nn.ModuleList(
+            [
+                SwinTransformerBlock(
+                    dim=dim, 
+                    num_heads=num_heads, 
+                    window_size=window_size,
+                    shift_size=0 if (i % 2 == 0) else window_size // 2,
+                    mlp_ratio=mlp_ratio
+                )
+            for i in range(depth)]
+        )
         self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
 
     def forward(self, x, x_size):
         H, W = x_size
         B, L, C = x.shape
         shortcut = x
+        
         for layer in self.layers:
-            x = layer(x, x_size) # Pass dynamic size down
+            x = layer(x, x_size)
+
         x = x.view(B, H, W, C).permute(0, 3, 1, 2).contiguous()
         x = self.conv(x)
         x = x.permute(0, 2, 3, 1).contiguous().view(B, H*W, C)
@@ -176,10 +183,10 @@ class SwinIR(nn.Module):
         num_out_ch = in_chans
         self.img_range = img_range
         
-        # 1. Shallow Feature Extraction
+        # Shallow Feature Extraction
         self.conv_first = nn.Conv2d(in_chans, embed_dim, 3, 1, 1)
 
-        # 2. Deep Feature Extraction (RSTB Layers)
+        # Deep Feature Extraction (RSTB Layers)
         self.num_layers = len(depths)
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
@@ -193,7 +200,7 @@ class SwinIR(nn.Module):
         self.norm = nn.LayerNorm(embed_dim)
         self.conv_after_body = nn.Conv2d(embed_dim, embed_dim, 3, 1, 1)
 
-        # 3. Upsampling
+        # Upsampling
         m_up = []
         if (upscale & (upscale - 1)) == 0: 
             import math
@@ -204,26 +211,26 @@ class SwinIR(nn.Module):
         self.conv_last = nn.Conv2d(embed_dim, num_out_ch, 3, 1, 1)
 
     def forward(self, x):
-        # 1. Check size and Pad
+        # Check size and Pad
         # We need to pad the input so H and W are multiples of window_size
         H, W = x.shape[2:]
         x = self.check_image_size(x)
-        H_pad, W_pad = x.shape[2:] # New dimensions after padding
+        H_pad, W_pad = x.shape[2:] 
         
-        # 2. Shallow Features
+        # Shallow Features
         x = self.conv_first(x)
         x_first = x
         
-        # 3. Flatten [B, C, H, W] -> [B, H*W, C]
+        # Flatten [B, C, H, W] -> [B, H*W, C]
         x = x.permute(0, 2, 3, 1).contiguous().view(x.shape[0], -1, x.shape[1])
         
-        # 4. Deep Features (Pass padded resolution down!)
+        # Deep Features 
         for layer in self.layers:
             x = layer(x, (H_pad, W_pad))
             
         x = self.norm(x)
         
-        # 5. Unflatten [B, H*W, C] -> [B, C, H, W]
+        # Unflatten [B, H*W, C] -> [B, C, H, W]
         x = x.view(x.shape[0], H_pad, W_pad, x.shape[2]).permute(0, 3, 1, 2).contiguous()
         
         x = self.conv_after_body(x)
