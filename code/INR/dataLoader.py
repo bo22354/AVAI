@@ -9,14 +9,12 @@ import torchvision.transforms.functional as TF
 class DIV2KDataset(Dataset):
     def __init__(self, root_dir, scale_factor=8, mode='train', patch_size=48, epoch_size=1000, sample_q=2304, noise=0):
         """
-        Args:
-            root_dir: Path to 'data' folder
-            scale_factor: Downsampling factor (e.g. 4)
-            mode: 'train' or 'valid'
-            patch_size: Size of the LR crop (Input to Encoder). 
-                        Note: This is LR size, not HR size!
-            epoch_size: Virtual epoch length
-            sample_q: Number of pixels to sample for loss calculation (e.g. 2304)
+        root_dir: Path to 'DIV2K' folder
+        scale_factor: 8
+        mode: 'train' or 'valid'
+        patch_size: Size of the LR crop (Input to Encoder). 
+        epoch_size: otal number of samples to see per epoch
+        sample_q: Number of pixels to sample for loss calculation (e.g. 2304)
         """
         self.mode = mode
         self.scale_factor = scale_factor
@@ -25,12 +23,12 @@ class DIV2KDataset(Dataset):
         self.sample_q = sample_q
         self.noise = noise
         
-
+        # Instead of creating and storing a x16 bicubic dataset 
+        # Use the pre-existing x8 and the downsample "on-the-fly" to save space
         self.read_scale = self.scale_factor
         if self.scale_factor == 16:
             self.read_scale = 8
 
-        # 1. Path Setup (Same as before)
         if mode == 'train':
             self.hr_dir = os.path.join(root_dir, 'DIV2K_train_HR')
             self.lr_dir = os.path.join(root_dir, f'DIV2K_train_LR_bicubic/X{self.read_scale}')
@@ -67,10 +65,9 @@ class DIV2KDataset(Dataset):
         return ret
 
     def __getitem__(self, idx):
-        # 1. Wrap index for virtual epochs
-        file_idx = idx % len(self.hr_files)
+        file_idx = idx % len(self.hr_files) # If more samples than images wrap back around
         
-        # 2. Load Images
+        # Load Images
         hr_path = self.hr_files[file_idx]
         hr_img = Image.open(hr_path).convert("RGB")
         
@@ -79,7 +76,7 @@ class DIV2KDataset(Dataset):
         lr_path = os.path.join(self.lr_dir, f"{img_id}x{self.read_scale}.png")
         lr_img = Image.open(lr_path).convert("RGB")
 
-        # 3. Crop Logic (Train Only)
+        # Synchronized Random Cropping (Train Only)
         if self.mode == 'train':
             # We crop based on LR size (Encoder Input)
             lr_crop_size = self.patch_size
@@ -109,12 +106,12 @@ class DIV2KDataset(Dataset):
                 hr_patch = TF.rotate(hr_patch, 90)
                 
             # Convert to Tensor
-            lr_tensor = TF.to_tensor(lr_patch) # [3, 48, 48]
-            hr_tensor = TF.to_tensor(hr_patch) # [3, 192, 192]
+            lr_tensor = TF.to_tensor(lr_patch) 
+            hr_tensor = TF.to_tensor(hr_patch) 
 
-            # --- TASK 2.3: ON-THE-FLY x16 DOWNSAMPLING ---
+            # ON-THE-FLY x16 DOWNSAMPLING
             if self.scale_factor == 16:
-                # We assume the loaded file is x8. We need to go down one more step (x2).
+                # Assume the loaded file is x8. so need to go down one more step (x2).
                 # interpolate expects 4D input [Batch, C, H, W], so we unsqueeze(0)
                 lr_tensor = torch.nn.functional.interpolate(
                     lr_tensor.unsqueeze(0), 
@@ -122,25 +119,20 @@ class DIV2KDataset(Dataset):
                     mode='bicubic', 
                     align_corners=False
                 ).squeeze(0)
-                
-                # Note: We enforce clamp because bicubic can overshoot 0.0/1.0
+
+                # Clamp because bicubic can overshoot 0.0/1.0            
                 lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
-            # ---------------------------------------------
 
             if self.noise > 0:
                 noise = torch.randn_like(lr_tensor) * (self.noise / 255.0)
                 lr_tensor = lr_tensor + noise
                 lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
             
-            # Normalization (LIIF typically uses standard 0-1 or -1 to 1)
-            # Let's use [-1, 1] to match your GAN logic
             lr_tensor = TF.normalize(lr_tensor, [0.5]*3, [0.5]*3)
             hr_tensor = TF.normalize(hr_tensor, [0.5]*3, [0.5]*3)
             
-            # 4. LIIF Specific: Coordinate & Pixel Sampling
-            
+            ## Coordinate & Pixel Sampling
             # Generate grid of coords for the HR patch
-            # Shape: [Total_Pixels, 2]
             coords = self._make_coord(hr_tensor.shape[-2:])
             
             # Flatten HR image to match coords [Total_Pixels, 3]
@@ -148,7 +140,6 @@ class DIV2KDataset(Dataset):
             
             if self.sample_q is not None:
                 # Randomly sample specific pixels to train on
-                # This saves memory/time vs training on all 192*192 pixels
                 n_pixels = hr_flat.shape[0]
                 sample_indices = torch.randperm(n_pixels)[:self.sample_q]
                 
@@ -159,9 +150,9 @@ class DIV2KDataset(Dataset):
                 batch_gt = hr_flat
 
             return {
-                'lr': lr_tensor,      # Input for Encoder
-                'coord': batch_coords,# (x,y) locations
-                'gt': batch_gt        # Target RGB
+                'lr': lr_tensor,      
+                'coord': batch_coords,
+                'gt': batch_gt        
             }
 
         else:
@@ -169,9 +160,9 @@ class DIV2KDataset(Dataset):
             lr_tensor = TF.to_tensor(lr_img)
             hr_tensor = TF.to_tensor(hr_img)
 
-            # --- TASK 2.3: ON-THE-FLY x16 DOWNSAMPLING ---
+            # ON-THE-FLY x16 DOWNSAMPLING
             if self.scale_factor == 16:
-                # We assume the loaded file is x8. We need to go down one more step (x2).
+                # Assume the loaded file is x8. so need to go down one more step (x2).
                 # interpolate expects 4D input [Batch, C, H, W], so we unsqueeze(0)
                 lr_tensor = torch.nn.functional.interpolate(
                     lr_tensor.unsqueeze(0), 
@@ -180,7 +171,7 @@ class DIV2KDataset(Dataset):
                     align_corners=False
                 ).squeeze(0)
                 
-                # Note: We enforce clamp because bicubic can overshoot 0.0/1.0
+                # Clamp because bicubic can overshoot 0.0/1.0
                 lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
             # ---------------------------------------------
 
@@ -189,10 +180,7 @@ class DIV2KDataset(Dataset):
                 lr_tensor = lr_tensor + noise
                 lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
 
-            # Normalize
             lr_tensor = TF.normalize(lr_tensor, [0.5]*3, [0.5]*3)
             hr_tensor = TF.normalize(hr_tensor, [0.5]*3, [0.5]*3)
             
-            # Return standard pair for validation loop
-            # (Validation usually infers whole image, so we handle coords in the eval loop)
             return lr_tensor, hr_tensor

@@ -24,18 +24,14 @@ from Generator import Generator
 from Discriminator import Discriminator
 from DiscriminatorX16 import DiscriminatorX16
 from Trainer import Trainer
-from alert import send_loud_notification
-
-
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:
     DEVICE = torch.device("cpu")
 
-
 parser = argparse.ArgumentParser(
-    description="Train a Siamese Progression Net on HD_EPIC",
+    description="Train SRGAN on DIV2K",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 )
 default_dataset_dir = Path(__file__).parent.parent.parent.resolve()
@@ -77,22 +73,17 @@ parser.add_argument(
     help="Sigma value for Gaussian noise (e.g. 10, 30, 50)"
 )
 
-
-
-
-
-
 def main(args):
-
+    #Dataset Path and Folders
     args.dataset_root.mkdir(parents=True, exist_ok=True)
     datasetRoot = str(args.dataset_root)
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
 
-
     patchSize = 24 * args.scale_factor
     print(f"Scale: x{args.scale_factor} | HR Patch Size: {patchSize}")
 
+    #Initialise Datasets from dataloader
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,
@@ -101,7 +92,6 @@ def main(args):
         epoch_size=1000,
         noise=args.noise
     )
-
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -118,7 +108,6 @@ def main(args):
         epoch_size=1000,
         noise=args.noise
     )
-
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         shuffle=False,
@@ -130,12 +119,11 @@ def main(args):
     print(f"Training Images: {len(train_dataset)} ({len(train_loader)} batches)")
     print(f"Validation Images: {len(valid_dataset)}")
 
+    # Models Configuration
     generator = Generator(scale_factor=args.scale_factor)
     discriminator = Discriminator(input_shape=(3, patchSize, patchSize))
-
-    if args.scale_factor == 16:
+    if args.scale_factor == 16: # x16 downscaling requires a different architecture for the discriminator (Generator dynamically adjusts)
         discriminator = DiscriminatorX16(input_shape=(3, patchSize, patchSize))
-
 
     trainer = Trainer(
         generator = generator,
@@ -146,23 +134,12 @@ def main(args):
         scale_factor=args.scale_factor,
         noise=args.noise
     )
-
     trainer.train(epochs = args.epochs)
-
-    send_loud_notification("Training Complete! Check results !!!")
-    
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    
-    # Check path exists before running
     if not os.path.exists(args.dataset_root):
         print(f"Error: Dataset not found at {args.dataset_root}")
     else:
         main(args)
-
-
-
-
-

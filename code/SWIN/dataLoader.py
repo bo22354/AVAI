@@ -11,8 +11,8 @@ class DIV2KDataset(Dataset):
     def __init__(self, root_dir, scale_factor=8, mode='train', patch_size=96, epoch_size=None, noise = 0):
         """
         root_dir: Path to 'DIV2K' folder
-        scale_factor: 4
-        mode: 'train' or 'test'
+        scale_factor: 8
+        mode: 'train' or 'valid'
         patch_size: Size of the HR crop (must be divisible by scale_factor)
         epoch_size: Total number of samples to see per epoch
         noise: The sigma used for the guassian noise added
@@ -63,32 +63,31 @@ class DIV2KDataset(Dataset):
         lr_path = os.path.join(self.lr_dir, lr_name)
         lr_img = Image.open(lr_path).convert("RGB")
 
-        # 3. Synchronized Random Cropping (Train Only)
+        # Synchronized Random Cropping (Train Only)
         if self.mode == 'train':
-            # A. Determine valid crop coordinates on LR image
+            # Determine valid crop coordinates on LR image
             lr_crop_size = self.patch_size // self.read_scale
             
             # Generate random top-left (i, j) for LR
-            # Use standard Python random, not PyTorch transforms
             w, h = lr_img.size
             i = random.randint(0, h - lr_crop_size)
             j = random.randint(0, w - lr_crop_size)
             
-            # B. Crop LR
+            # Crop LR
             lr_patch = TF.crop(lr_img, i, j, lr_crop_size, lr_crop_size)
             
-            # C. Calculate matching coordinates for HR
+            # Calculate matching coordinates for HR
             # Multiply coordinates by scale factor
             hr_i = i * self.read_scale
             hr_j = j * self.read_scale
             hr_patch = TF.crop(hr_img, hr_i, hr_j, self.patch_size, self.patch_size)
             
-            # D. Random Horizontal Flip (Applied to both)
+            # Random Horizontal Flip (Applied to both)
             if random.random() > 0.5:
                 lr_patch = TF.hflip(lr_patch)
                 hr_patch = TF.hflip(hr_patch)
                 
-            # E. Random Rotation (Applied to both)
+            # Random Rotation (Applied to both)
             if random.random() > 0.5:
                 lr_patch = TF.rotate(lr_patch, 90)
                 hr_patch = TF.rotate(hr_patch, 90)
@@ -100,13 +99,13 @@ class DIV2KDataset(Dataset):
 
             
 
-        # 4. Convert to Tensor and Normalize
+        # Convert to Tensor and Normalize
         lr_tensor = TF.to_tensor(lr_patch)
         hr_tensor = TF.to_tensor(hr_patch)
 
-        # --- TASK 2.3: ON-THE-FLY x16 DOWNSAMPLING ---
+        # ON-THE-FLY x16 DOWNSAMPLING
         if self.scale_factor == 16:
-            # We assume the loaded file is x8. We need to go down one more step (x2).
+            # Assume the loaded file is x8. so need to go down one more step (x2).
             # interpolate expects 4D input [Batch, C, H, W], so we unsqueeze(0)
             lr_tensor = torch.nn.functional.interpolate(
                 lr_tensor.unsqueeze(0), 
@@ -115,7 +114,7 @@ class DIV2KDataset(Dataset):
                 align_corners=False
             ).squeeze(0)
             
-            # Note: We enforce clamp because bicubic can overshoot 0.0/1.0
+            # Clamp because bicubic can overshoot 0.0/1.0
             lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
 
         if self.noise > 0:
@@ -123,8 +122,6 @@ class DIV2KDataset(Dataset):
             lr_tensor = lr_tensor + noise
             lr_tensor = torch.clamp(lr_tensor, 0.0, 1.0)
         
-        # Optional: Normalize to [-1, 1] for GANs
-        # mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5] logic
         lr_tensor = TF.normalize(lr_tensor, [0.5]*3, [0.5]*3)
         hr_tensor = TF.normalize(hr_tensor, [0.5]*3, [0.5]*3)
 

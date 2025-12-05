@@ -8,25 +8,22 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
 import torch.nn.functional as F
 
-# --- Imports (Local) ---
-# Ensure we can find the sibling files LIIF.py and dataset_liif.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
 from dataLoader import DIV2KDataset
 from LIIF import LIIF
 
-# --- Setup Device ---
+# Setup Device
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:
     DEVICE = torch.device("cpu")
 
-# --- Arguments ---
-parser = argparse.ArgumentParser(description="Evaluate INR (LIIF) Model")
-
+parser = argparse.ArgumentParser(
+    description="Evaluate INR (LIIF) Model"
+)
 default_dataset_dir = Path(__file__).parent.parent.parent.resolve() / "data"
-
 parser.add_argument(
     "--dataset-root", 
     default=default_dataset_dir, 
@@ -59,7 +56,7 @@ parser.add_argument(
 )
 
 def make_coord(shape):
-    """ Helper to generate (x,y) coordinates for the full image grid """
+    # Generates (x,y) coordinates for the full image grid 
     coord_seqs = []
     for i, n in enumerate(shape):
         v0, v1 = -1, 1
@@ -73,7 +70,7 @@ def make_coord(shape):
     return ret.view(-1, ret.shape[-1])
 
 def batched_predict(model, lr, coord, chunk_size=30000):
-    """ Predicts pixels in chunks to avoid CUDA OOM on large images """
+    # Predicts pixels in chunks to avoid CUDA OOM on large images 
     preds = []
     n_pixels = coord.shape[1]
     
@@ -96,26 +93,21 @@ def evaluate(args):
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
 
-    # 1. Load Dataset (Validation Mode)
+    # Load Dataset (Validation Mode)
     val_dataset = DIV2KDataset(
         root_dir=validDatasetPath,
         scale_factor=args.scale_factor,
         mode="valid",
-        patch_size=48, # Ignored in valid
-        epoch_size=1,  # Ignored in valid
-        sample_q=None,  # None = Full Image
+        patch_size=48, 
+        epoch_size=1,  
+        sample_q=None, 
         noise=args.noise
     )
 
     valid_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-    # 2. Initialize Model
-    # Ensure these params match your training config!
-    # If you used the Advanced LIIF (EDSR), keep resblocks=16. 
-    # If you used the Simple LIIF, change back to 8.
+    # Configure Model
     model = LIIF(n_feats=64, n_resblocks=16, mlp_dim=256).to(DEVICE)
-
-    # 3. Load Weights
     try:
         state_dict = torch.load(args.model, map_location=DEVICE, weights_only=True)
         model.load_state_dict(state_dict)
@@ -126,7 +118,7 @@ def evaluate(args):
 
     model.eval()
 
-    # 4. Metrics
+    # Metrics
     ssim_calc = StructuralSimilarityIndexMeasure(data_range=1.0).to(DEVICE)
     total_psnr = 0
     total_ssim = 0
@@ -139,22 +131,21 @@ def evaluate(args):
             lr = lr.to(DEVICE)
             hr = hr.to(DEVICE)
             
-            # A. Generate Query Coords for the Full HR Image
+            # Generate Query Coords for the Full HR Image
             h_hr, w_hr = hr.shape[-2:]
             coord = make_coord((h_hr, w_hr)).to(DEVICE).unsqueeze(0)
             
-            # B. Predict (Batched)
+            # Predict (Batched)
             pred_all = batched_predict(model, lr, coord)
             
-            # C. Reshape to Image [1, 3, H, W]
+            # Reshape to Image [1, 3, H, W]
             sr = pred_all.view(1, h_hr, w_hr, 3).permute(0, 3, 1, 2)
 
-            # D. Denormalize & Clamp
-            # LIIF output (Tanh) is [-1, 1] -> [0, 1]
+            # Denormalize & Clamp
             sr_norm = torch.clamp(sr * 0.5 + 0.5, 0, 1)
             hr_norm = torch.clamp(hr * 0.5 + 0.5, 0, 1)
 
-            # E. Calculate Metrics
+            # Calculate Metrics
             mse = torch.mean((sr_norm - hr_norm) ** 2)
             psnr = -10 * torch.log10(mse).item()
             ssim = ssim_calc(sr_norm, hr_norm).item()
@@ -163,24 +154,20 @@ def evaluate(args):
             total_ssim += ssim
             count += 1
 
-            # --- VISUALIZATION LOGIC ---
             if args.save_images and i < 10: # Only save the first 10 images
                 # Resize LR to match HR size for side-by-side comparison
-                # We use 'nearest' so you can clearly see the blocky pixels of the input
                 lr_resized = F.interpolate(lr, size=(h_hr, w_hr), mode='nearest')
                 lr_resized = torch.clamp(lr_resized * 0.5 + 0.5, 0, 1)
                 
-                # Stack: Left=Input, Middle=Generated, Right=Ground Truth
                 comparison = torch.cat((lr_resized, sr_norm, hr_norm), dim=3)
                 save_path = save_dir / f"val_{i}_psnr{psnr:.2f}.png"
                 save_image(comparison, save_path)
                 print(f"Saved visualization: {save_path}")
-            # ---------------------------
-            
+                
             if count % 10 == 0:
                 print(f"Processed {count}/{len(val_dataset)}... (Current Avg PSNR: {total_psnr/count:.2f})")
 
-    # 5. Final Results
+    # Final Results
     avg_psnr = total_psnr / count
     avg_ssim = total_ssim / count
     

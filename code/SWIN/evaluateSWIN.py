@@ -8,8 +8,6 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision.utils import save_image
 import torch.nn.functional as F
 
-# --- Imports (Local) ---
-# Ensure we can find the sibling files LIIF.py and dataset_liif.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(current_dir)
@@ -17,15 +15,15 @@ sys.path.append(current_dir)
 from dataLoader import DIV2KDataset
 from SwinIR import SwinIR
 
-# --- Setup Device ---
+# Setup Device
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 else:
     DEVICE = torch.device("cpu")
 
-# --- Arguments ---
-parser = argparse.ArgumentParser(description="Evaluate SwinIR Model")
-
+parser = argparse.ArgumentParser(
+    description="Evaluate SwinIR Model"
+)
 default_dataset_dir = Path(__file__).parent.parent.parent.resolve() / "data"
 
 parser.add_argument(
@@ -68,24 +66,23 @@ def evaluate(args):
     save_dir = Path("evaluation_results_swin")
     save_dir.mkdir(exist_ok=True)
 
-    lr_patchSize = 48 # POTENTIALLY LOWER TO 48
+    lr_patchSize = 48 
 
-
-    # 1. Load Dataset
+    # Load Dataset
     val_dataset = DIV2KDataset(
         root_dir=validDatasetPath,
         scale_factor=args.scale_factor,
         mode="valid",
-        patch_size=0, # Ignored in valid
-        noise=args.noise # Pass noise if applicable
+        patch_size=0, 
+        noise=args.noise 
     )
-    valid_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    valid_loader = DataLoader(
+        val_dataset, 
+        batch_size=1, 
+        shuffle=False
+    )
 
-    # 2. Initialize Model
-    # Important: SwinIR setup must match training!
-    # LR patch size matters for initialization. 
-    # Usually for validation we can set img_size to something reasonable (e.g. 64)
-    # The new SwinIR code handles dynamic sizes, so this is just for init.
+    # Configure Model
     model = SwinIR(
         img_size=lr_patchSize,
         patch_size=1, 
@@ -99,8 +96,6 @@ def evaluate(args):
         img_range=1., 
         resi_connection='1conv'
     )
-
-    # 3. Load Weights
     try:
         state_dict = torch.load(args.model, map_location=DEVICE, weights_only=True)
         model.load_state_dict(state_dict)
@@ -112,7 +107,7 @@ def evaluate(args):
     model.to(DEVICE)
     model.eval()
 
-    # 4. Metrics
+    # Metrics
     ssim_calc = StructuralSimilarityIndexMeasure(data_range=1.0).to(DEVICE)
     total_psnr = 0
     total_ssim = 0
@@ -124,9 +119,7 @@ def evaluate(args):
         for i, (lr, hr) in enumerate(valid_loader):
             lr = lr.to(DEVICE)
             hr = hr.to(DEVICE)
-            
-            # Forward Pass
-            # SwinIR handles padding internally now
+
             sr = model(lr)
 
             # Crop to min common size (handle padding artifacts)
@@ -139,7 +132,6 @@ def evaluate(args):
             hr = hr[:, :, :h_min, :w_min]
 
             # Denormalize & Clamp
-            # Assume data is [-1, 1]
             sr_norm = torch.clamp(sr * 0.5 + 0.5, 0, 1)
             hr_norm = torch.clamp(hr * 0.5 + 0.5, 0, 1)
 
@@ -152,7 +144,6 @@ def evaluate(args):
             total_ssim += ssim
             count += 1
             
-            # --- VISUALIZATION LOGIC ---
             if args.save_images and i < 10:
                 # Resize LR to match HR size
                 lr_resized = F.interpolate(lr, size=(h_min, w_min), mode='nearest')
@@ -161,7 +152,6 @@ def evaluate(args):
                 comparison = torch.cat((lr_resized, sr_norm, hr_norm), dim=3)
                 save_path = save_dir / f"val_{i}_psnr{psnr:.2f}.png"
                 save_image(comparison, save_path)
-            # ---------------------------
             
             if count % 10 == 0:
                 print(f"Processed {count}/{len(val_dataset)}...")

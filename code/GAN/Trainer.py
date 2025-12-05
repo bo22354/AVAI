@@ -1,6 +1,7 @@
 import os
 import torch
 import time
+import sys
 
 import numpy as np
 import torch.nn as nn
@@ -11,10 +12,11 @@ from torchvision.utils import save_image
 
 from PIL import Image
 
-from calculatePSNR import calculate_psnr
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+from Utils.calculatePSNR import calculate_psnr
 from evaluate import evaluate
-
-
 
 
 class Trainer:
@@ -41,46 +43,35 @@ class Trainer:
         self.scale_factor = scale_factor
         self.noise = noise
 
-    def train(
-        self,
-        epochs: int
-    ):
-        print("Starting Training...")
+    def train(self, epochs: int):
+        print("Starting GAN Training")
         best_psnr = 0.0
         
         for epoch in range(epochs):
             start_time = time.time()            
-            # Metrics for this epoch
-            running_results = {'d_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0}
+            running_results = {'d_loss': 0, 'g_loss': 0, 'd_score': 0, 'g_score': 0} # Metrics for epochs
     
             self.netG.train()
             self.netD.train()
     
-            # 4. The Loop: Note we unpack (lr, hr) from the loader
             for lr_imgs, hr_imgs in self.train_loader:
-                batch_size = lr_imgs.size(0)
                 
                 # Move data to GPU
                 lr = lr_imgs.to(self.device)
                 hr = hr_imgs.to(self.device)
                 
-                ############################
-                # (1) Update Discriminator
-                ############################
+                # Update Discriminator
                 self.optimD.zero_grad()
                 
                 # Generate Fake HR images
                 fake_hr = self.netG(lr)
                 
                 # Train on Real Images
-                # Label 1 = Real (often smoothed to 0.9 for stability)
                 pred_real = self.netD(hr)
                 label_real = torch.ones_like(pred_real) 
                 loss_d_real = self.criterion_GAN(pred_real, label_real)
                 
                 # Train on Fake Images
-                # Label 0 = Fake
-                # Detach() is CRITICAL here. We don't want to update Generator weights yet.
                 pred_fake = self.netD(fake_hr.detach()) 
                 label_fake = torch.zeros_like(pred_fake)
                 loss_d_fake = self.criterion_GAN(pred_fake, label_fake)
@@ -90,24 +81,19 @@ class Trainer:
                 loss_d.backward()
                 self.optimD.step()
 
-                ############################
-                # (2) Update Generator
-                ############################
+                # Update Generator
                 self.optimG.zero_grad()
                 
-                # We want the Discriminator to think our fakes are Real (Label = 1)
-                pred_fake_for_G = self.netD(fake_hr) # No detach here!
+                pred_fake_for_G = self.netD(fake_hr) 
                 
-                # A. Adversarial Loss (The lie)
+                # Adversarial Loss (The lie)
                 loss_g_gan = self.criterion_GAN(pred_fake_for_G, label_real)
 
                 
-                # B. Content Loss (The truth) - Are pixels close to Ground Truth?
+                # Content Loss (The truth)
                 loss_g_content = self.criterion(fake_hr, hr)
                 
                 # COMBINED LOSS
-                # Standard ratio: 1.0 Content Loss + 0.001 Adversarial Loss
-                # If you don't use Content Loss, the GAN hallucinates random images.
                 loss_g = loss_g_content + (1e-3 * loss_g_gan)
                 
                 loss_g.backward()
@@ -117,7 +103,6 @@ class Trainer:
                 running_results['g_loss'] += loss_g.item()
                 running_results['d_loss'] += loss_d.item()
 
-            # End of Epoch Logging
             avg_d_loss = running_results['d_loss'] / len(self.train_loader)
             avg_g_loss = running_results['g_loss'] / len(self.train_loader)
 
@@ -131,22 +116,13 @@ class Trainer:
                 if avg_psnr > best_psnr:
                     best_psnr = avg_psnr
                     strPSNR = f"{best_psnr:.2f}"
-                    # os.makedirs("Models_GAN", exist_ok=True)
                     torch.save(self.netG.state_dict(), f"{save_dir}/{strPSNR}_GAN.pth")
                     print("-> New Best Model Saved!")
 
-                # 1. Resize LR to match HR size for visualization (using Nearest Neighbor or Bilinear)
                 lr_resized = nn.functional.interpolate(lr, scale_factor=self.scale_factor, mode='nearest')
-                
-                # 2. Concatenate: LR (resized) | Generated | Ground Truth
-                # dim=3 places them side-by-side horizontally
                 comparison = torch.cat((lr_resized, fake_hr, hr), dim=3) 
-                
-                # 3. Undo Normalization [-1, 1] -> [0, 1] for saving
                 save_dir = "./results/noise"+str(self.noise)+"/scale"+str(self.scale_factor)
                 os.makedirs(save_dir, exist_ok=True)
-                
-                # 4. Save
                 save_image(comparison * 0.5 + 0.5, f"{save_dir}/epoch_{epoch}.png")
      
             print(f"Epoch [{epoch+1}/{epochs}] Loss G: {avg_g_loss:.4f} Loss D: {avg_d_loss:.4f} Time: {time.time() - start_time:.2f}s")
@@ -160,12 +136,10 @@ class Trainer:
             for lr, hr in self.valid_loader:
                 lr = lr.to(self.device)
                 hr = hr.to(self.device)
-                
-                # 1. Inference
+
                 sr = self.netG(lr)
                 
-                # 2. Dynamic Cropping (The Fix)
-                # Get the minimum dimensions between Generated (sr) and Ground Truth (hr)
+                # Dynamic Cropping 
                 batch, c, h_sr, w_sr = sr.shape
                 _, _, h_hr, w_hr = hr.shape
                 
@@ -176,10 +150,6 @@ class Trainer:
                 sr_cropped = sr[:, :, :h_min, :w_min]
                 hr_cropped = hr[:, :, :h_min, :w_min]
                 
-                # 3. Calculate Metric on the cropped versions
                 total_psnr += calculate_psnr(sr_cropped, hr_cropped).item()
                 
         return total_psnr / len(self.valid_loader)
-
-
-    

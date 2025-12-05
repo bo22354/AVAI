@@ -15,7 +15,7 @@ import math
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
-from Accessory.calculatePSNR import calculate_psnr
+from Utils.calculatePSNR import calculate_psnr
 
 
 class Trainer:

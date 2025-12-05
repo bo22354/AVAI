@@ -59,8 +59,7 @@ def main(args):
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
     
-    # 1. Load Dataset (Validation Mode)
-    # Important: batch_size=1 because images have different sizes
+    # Load Dataset (Validation Mode)
     val_dataset = DIV2KDataset(
         root_dir=validDatasetPath, 
         scale_factor=args.scale_factor, 
@@ -74,10 +73,8 @@ def main(args):
         shuffle=False
     )
 
+    # Model COnfiguration
     model = Generator(scale_factor=args.scale_factor).to(DEVICE)
-
-
-    # Load weights
     try:
         state_dict = torch.load(args.model, map_location=DEVICE, weights_only=True)
         model.load_state_dict(state_dict)
@@ -85,7 +82,6 @@ def main(args):
     except Exception as e:
         print(f"Error loading model: {e}")
         return
-
     evaluate(model, valid_loader, len(val_dataset), DEVICE, args.scale_factor)
 
 
@@ -93,19 +89,14 @@ def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor):
     print(f"--- Evaluating on Validation ---")
     save_dir = Path("evaluation_results")
     save_dir.mkdir(exist_ok=True)
-
-
     model.eval()
 
-    # 3. Define Metrics
-    # SSIM expects [0, 1] range
+    # Metrics
     ssim_calc = StructuralSimilarityIndexMeasure(data_range=1.0).to(DEVICE)
-    
     total_psnr = 0
     total_ssim = 0
     count = 0
 
-    # 4. Inference Loop
     with torch.no_grad():
         for i, (lr, hr) in enumerate(valid_loader):
             lr = lr.to(DEVICE)
@@ -114,7 +105,7 @@ def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor):
             # Upscale
             sr = model(lr)
 
-            #Crop both images to be the same size
+            # Crop both images to be the same size
             _, _, h_sr, w_sr = sr.shape
             _, _, h_hr, w_hr = hr.shape
             
@@ -142,37 +133,28 @@ def evaluate(model, valid_loader, datasetLength, DEVICE, scale_factor):
             total_psnr += psnr
             total_ssim += ssim
             count += 1
-                        # --- VISUALIZATION LOGIC ---
+
             if args.save_images and i < 10: # Only save the first 10 images
                 # Resize LR to match HR size for side-by-side comparison
-                # We use 'nearest' so you can clearly see the blocky pixels of the input
                 lr_resized = F.interpolate(lr, size=(h_min, w_min), mode='nearest')
                 lr_resized = torch.clamp(lr_resized * 0.5 + 0.5, 0, 1)
                 
-                # Stack: Left=Input, Middle=Generated, Right=Ground Truth
                 comparison = torch.cat((lr_resized, sr_norm, hr_norm), dim=3)
                 save_path = save_dir / f"val_{i}_psnr{psnr:.2f}.png"
                 save_image(comparison, save_path)
                 print(f"Saved visualization: {save_path}")
 
-            # ---------------------------
             if count % 10 == 0:
                 print(f"Processed {count}/{datasetLength} images...")
 
-    # 5. Final Results
+    # Final Results
     avg_psnr = total_psnr / count
     avg_ssim = total_ssim / count
-    
     print("\n" + "="*30)
     print(f"RESULTS for Scale x{scale_factor}")
     print(f"Average PSNR: {avg_psnr:.4f} dB")
     print(f"Average SSIM: {avg_ssim:.4f}")
     print("="*30 + "\n")
-
-    
-
-
-
 
 if __name__ == "__main__":
     args = parser.parse_args()

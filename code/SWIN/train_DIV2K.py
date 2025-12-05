@@ -23,7 +23,6 @@ from dataLoader import DIV2KDataset
 from dataLoader import DIV2KDataset 
 from SwinIR import SwinIR
 from Trainer import Trainer
-# from alert import send_loud_notification
 
 
 

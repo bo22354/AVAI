@@ -28,24 +28,22 @@ class Generator(nn.Module):
         if scale_factor == 16:
             n_resblocks = 24
 
-        # 1. First Convolution: Maps Image (3 channels) to Feature Space (64 channels)
+        # First Convolution: Maps Image (3 channels) to Feature Space (64 channels)
         self.block1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=9, padding=4),
             nn.PReLU()
         )
 
-        # 2. Residual Blocks (The "Body"): 
-        # 16 blocks is standard for SRGAN. You can reduce to 6-8 for faster training.
+        # Residual Blocks (The "Body"): 
         self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(n_resblocks)])
 
-        # 3. Post-Residual Block
+        # Post-Residual Block
         self.block2 = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64)
         )
 
-        # 4. Upsampling (PixelShuffle)
-        # This loop creates the upscaling layers (e.g. two x2 layers for x4 scaling)
+        # Upsampling (PixelShuffle)
         block3 = [
             nn.Conv2d(64, 256, kernel_size=3, padding=1),
             nn.PixelShuffle(2),
@@ -57,19 +55,15 @@ class Generator(nn.Module):
             block3.append(nn.PReLU())
         self.block3 = nn.Sequential(*block3)
 
-        # 5. Final Output: Back to 3 Channels (RGB)
+        # Final Output: Back to 3 Channels (RGB)
         self.conv4 = nn.Conv2d(64, 3, kernel_size=9, padding=4)
 
     def forward(self, x):
-        # x is the Low-Res Image [Batch, 3, H, W]
         block1 = self.block1(x)
         res_blocks = self.res_blocks(block1)
         block2 = self.block2(res_blocks)
         
-        # Skip connection from start to after res-blocks
         x = self.block3(block1 + block2)
-        
         x = self.conv4(x)
         
-        # SRGAN usually outputs raw values, but Tanh is common if normalizing to [-1, 1]
         return torch.tanh(x)

@@ -22,7 +22,6 @@ from multiprocessing import cpu_count
 from dataLoader import DIV2KDataset
 from Trainer import Trainer
 from LIIF import LIIF
-# from alert import send_loud_notification
 
 
 
@@ -89,16 +88,16 @@ parser.add_argument(
 
 
 def main(args):
-
+    #Dataset Path and Folders
     args.dataset_root.mkdir(parents=True, exist_ok=True)
     datasetRoot = str(args.dataset_root)
     trainDatasetPath = Path(datasetRoot+"/Train")
     validDatasetPath = Path(datasetRoot+"/Valid")
 
-
     print(f"--- Training LIIF | Scale: x{args.scale_factor} ---")
     print(f"LR Patch Size: {args.patch_size} | Sample Q: {args.sample_q}")
 
+    #Initialise Datasets from dataloader
     train_dataset = DIV2KDataset(
         root_dir=trainDatasetPath,
         scale_factor=args.scale_factor,
@@ -108,7 +107,6 @@ def main(args):
         sample_q=args.sample_q,
         noise=args.noise
     )
-
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -126,7 +124,6 @@ def main(args):
         sample_q=args.sample_q,
         noise=args.noise
     )
-
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         shuffle=True,
@@ -138,9 +135,9 @@ def main(args):
     print(f"Training Images: {len(train_dataset)} ({len(train_loader)} batches)")
     print(f"Validation Images: {len(valid_dataset)}")
 
+    # Model Configuration
     model = LIIF(n_feats=64, mlp_dim=256).to(DEVICE)
 
-    # 3. Initialize Trainer
     trainer = Trainer(
         model=model,
         device=DEVICE,
@@ -149,18 +146,11 @@ def main(args):
         scale_factor=args.scale_factor,
         noise=args.noise
     )
-
-    # 4. Start Training
     trainer.train(epochs=args.epochs)
-
-
-
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    
-    # Check path exists before running
     if not os.path.exists(args.dataset_root):
         print(f"Error: Dataset not found at {args.dataset_root}")
     else:
